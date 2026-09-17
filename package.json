@@ -1,0 +1,13 @@
+{
+  "name": "shadow-x-whatsapp-channel-bot",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24",
+    "firebase": "12.19.0",
+    "pino": "9.10.0"
+  }
+}
