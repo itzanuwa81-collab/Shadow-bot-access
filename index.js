@@ -18,9 +18,9 @@ const {
 
 const { initializeApp } = require("firebase/app");
 
-// ===============================
+// ========================================
 // SHADOW X BOT CONFIG
-// ===============================
+// ========================================
 
 const BOT_PHONE_NUMBER = "94766615142";
 const CHANNEL_JID = "120363430002311340@newsletter";
@@ -35,9 +35,9 @@ const db = getDatabase(app);
 
 const PORT = process.env.PORT || 3000;
 
-// ===============================
+// ========================================
 // HTTP SERVER
-// ===============================
+// ========================================
 
 http
   .createServer((req, res) => {
@@ -51,17 +51,17 @@ http
     console.log(`🌐 Server running on port ${PORT}`);
   });
 
-// ===============================
-// HELPERS
-// ===============================
+// ========================================
+// DATE / TIME
+// ========================================
 
 function formatDate(timestamp) {
   if (!timestamp) return "Unknown";
 
-  return new Date(timestamp).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
+  return new Date(timestamp).toLocaleDateString("en-CA", {
     year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     timeZone: "Asia/Colombo",
   });
 }
@@ -69,36 +69,45 @@ function formatDate(timestamp) {
 function formatTime(timestamp) {
   if (!timestamp) return "Unknown";
 
-  return new Date(timestamp).toLocaleTimeString("en-GB", {
+  return new Date(timestamp).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
     timeZone: "Asia/Colombo",
   });
 }
+
+// ========================================
+// STATUS
+// ========================================
 
 function getStatus(user) {
   const expiresAt = Number(user.expiresAt || 0);
   const remaining = expiresAt - Date.now();
 
-  if (remaining <= 0) return "expired";
+  if (remaining <= 0) {
+    return "expired";
+  }
 
-  if (
-    remaining <=
-    3 * 24 * 60 * 60 * 1000
-  ) {
+  if (remaining <= 3 * 24 * 60 * 60 * 1000) {
     return "soon";
   }
 
   return "active";
 }
 
+// ========================================
+// FOOTER
+// ========================================
+
 function footer() {
   return "\n\n> *𝐏ᴏᴡᴇʀᴇᴅ 𝐁ʏ 𝐒ʜᴀᴅᴏᴡ 👻*";
 }
 
-// ===============================
+// ========================================
 // NOTIFICATION STATE
-// ===============================
+// ========================================
 
 async function notificationExists(key) {
   try {
@@ -127,61 +136,137 @@ async function saveNotification(key) {
     );
   } catch (error) {
     console.error(
-      "❌ Could not save notification state:",
+      "❌ Notification save error:",
       error.message
     );
   }
 }
 
-// ===============================
-// WHATSAPP BOT
-// ===============================
+// ========================================
+// WHATSAPP
+// ========================================
 
 let sock = null;
 let reconnecting = false;
+let firebaseListenersStarted = false;
 
 async function startBot() {
   try {
     console.log("");
-    console.log(
-      "🚀 SHADOW X WhatsApp Bot Starting..."
-    );
-
-    console.log(
-      "📱 Bot Number:",
-      BOT_PHONE_NUMBER
-    );
+    console.log("========================================");
+    console.log("👻 SHADOW X BOT ACCESS SYSTEM");
+    console.log("========================================");
+    console.log("🚀 Starting WhatsApp bot...");
+    console.log("📱 Bot:", BOT_PHONE_NUMBER);
 
     const { state, saveCreds } =
       await useMultiFileAuthState("auth_info");
 
     console.log(
-      `🔐 WhatsApp session registered: ${state.creds.registered}`
+      `🔐 WhatsApp registered: ${state.creds.registered}`
     );
-
-    // ===============================
-    // CREATE WHATSAPP SOCKET
-    // ===============================
 
     sock = makeWASocket({
       auth: state,
-      logger: pino({
-        level: "info",
-      }),
+      logger: pino({ level: "info" }),
       printQRInTerminal: false,
       markOnlineOnConnect: false,
     });
 
-    sock.ev.on(
-      "creds.update",
-      saveCreds
-    );
+    sock.ev.on("creds.update", saveCreds);
 
     let pairingRequested = false;
 
-    // ===============================
+    // ========================================
+    // PAIRING CODE
+    // ========================================
+
+    const requestPairing = async () => {
+      if (state.creds.registered) {
+        console.log(
+          "ℹ️ WhatsApp session already registered."
+        );
+        return;
+      }
+
+      if (pairingRequested) {
+        return;
+      }
+
+      pairingRequested = true;
+
+      try {
+        console.log("");
+        console.log(
+          "🔗 WhatsApp is not linked yet."
+        );
+        console.log(
+          "⏳ Waiting for WhatsApp socket..."
+        );
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, 5000)
+        );
+
+        console.log(
+          "🔐 Requesting pairing code..."
+        );
+
+        const code =
+          await sock.requestPairingCode(
+            BOT_PHONE_NUMBER
+          );
+
+        console.log("");
+        console.log(
+          "========================================"
+        );
+        console.log(
+          "🔐 SHADOW X WHATSAPP PAIRING CODE"
+        );
+        console.log(
+          "========================================"
+        );
+        console.log(`👉 ${code}`);
+        console.log(
+          "========================================"
+        );
+        console.log(
+          "📱 WhatsApp → Settings"
+        );
+        console.log(
+          "📱 → Linked Devices"
+        );
+        console.log(
+          "📱 → Link a device"
+        );
+        console.log(
+          "📱 → Link with phone number"
+        );
+        console.log(
+          "========================================"
+        );
+        console.log("");
+      } catch (error) {
+        console.error(
+          "❌ Pairing code error:",
+          error?.message || error
+        );
+
+        pairingRequested = false;
+      }
+    };
+
+    // Request shortly after socket creation.
+    // This avoids depending only on the
+    // "connecting" event timing.
+    if (!state.creds.registered) {
+      setTimeout(requestPairing, 3000);
+    }
+
+    // ========================================
     // CONNECTION UPDATE
-    // ===============================
+    // ========================================
 
     sock.ev.on(
       "connection.update",
@@ -193,84 +278,22 @@ async function startBot() {
 
         console.log(
           `📡 WhatsApp connection: ${
-            connection || "update received"
+            connection || "update"
           }`
         );
 
-        // =================================
-        // PAIRING CODE
-        // =================================
-
+        // Backup pairing request
         if (
+          connection === "connecting" &&
           !state.creds.registered &&
           !pairingRequested
         ) {
-          pairingRequested = true;
-
-          console.log("");
-          console.log(
-            "🔗 WhatsApp account is not registered."
-          );
-
-          console.log(
-            "⏳ Preparing pairing code..."
-          );
-
-          try {
-            // Give the WhatsApp socket time
-            // to initialize before requesting code.
-            await new Promise((resolve) =>
-              setTimeout(resolve, 5000)
-            );
-
-            console.log(
-              "🔐 Requesting WhatsApp pairing code..."
-            );
-
-            const code =
-              await sock.requestPairingCode(
-                BOT_PHONE_NUMBER
-              );
-
-            console.log("");
-            console.log(
-              "========================================"
-            );
-            console.log(
-              "🔐 SHADOW X WHATSAPP PAIRING CODE"
-            );
-            console.log(
-              "========================================"
-            );
-            console.log(
-              `👉 ${code}`
-            );
-            console.log(
-              "========================================"
-            );
-            console.log(
-              "📱 WhatsApp → Settings → Linked Devices"
-            );
-            console.log(
-              "📱 → Link a device → Link with phone number"
-            );
-            console.log(
-              "========================================"
-            );
-            console.log("");
-          } catch (error) {
-            console.error(
-              "❌ Pairing code error:",
-              error?.message || error
-            );
-
-            pairingRequested = false;
-          }
+          await requestPairing();
         }
 
-        // =================================
+        // ====================================
         // CONNECTED
-        // =================================
+        // ====================================
 
         if (connection === "open") {
           console.log("");
@@ -284,7 +307,7 @@ async function startBot() {
             "========================================"
           );
           console.log(
-            `📢 Target Channel: ${CHANNEL_JID}`
+            `📢 Channel: ${CHANNEL_JID}`
           );
           console.log(
             "========================================"
@@ -292,9 +315,9 @@ async function startBot() {
           console.log("");
         }
 
-        // =================================
+        // ====================================
         // DISCONNECTED
-        // =================================
+        // ====================================
 
         if (connection === "close") {
           const statusCode =
@@ -302,20 +325,20 @@ async function startBot() {
               ?.statusCode;
 
           console.log(
-            "❌ WhatsApp connection closed.",
-            statusCode || ""
+            "❌ WhatsApp connection closed:",
+            statusCode || "unknown"
           );
 
           if (
             statusCode !==
             DisconnectReason.loggedOut
           ) {
-            console.log(
-              "🔄 Reconnecting WhatsApp..."
-            );
-
             if (!reconnecting) {
               reconnecting = true;
+
+              console.log(
+                "🔄 Reconnecting in 5 seconds..."
+              );
 
               setTimeout(async () => {
                 reconnecting = false;
@@ -331,22 +354,13 @@ async function startBot() {
               }, 5000);
             }
           } else {
-            console.log("");
             console.log(
               "⚠️ WhatsApp logged out."
             );
-            console.log(
-              "⚠️ A new pairing may be required."
-            );
-            console.log("");
           }
         }
       }
     );
-
-    // ===============================
-    // FIREBASE LISTENERS
-    // ===============================
 
     setupFirebaseListeners();
   } catch (error) {
@@ -355,32 +369,27 @@ async function startBot() {
       error
     );
 
-    setTimeout(
-      startBot,
-      10000
-    );
+    setTimeout(startBot, 10000);
   }
 }
 
-// ===============================
+// ========================================
 // SEND CHANNEL MESSAGE
-// ===============================
+// ========================================
 
 async function sendChannelMessage(message) {
   try {
     if (!sock) {
       console.log(
-        "⚠️ WhatsApp socket is not ready."
+        "⚠️ WhatsApp socket not ready."
       );
-
       return false;
     }
 
     if (!sock.user) {
       console.log(
-        "⚠️ WhatsApp is not connected yet."
+        "⚠️ WhatsApp not connected."
       );
-
       return false;
     }
 
@@ -406,132 +415,97 @@ async function sendChannelMessage(message) {
   }
 }
 
-// ===============================
-// NEW USER MESSAGE
-// ===============================
+// ========================================
+// NEW USER
+// ========================================
 
 async function notifyNewUser(user) {
   if (!user || !user.id) return;
 
   const key = `new_${user.id}`;
 
-  if (
-    await notificationExists(key)
-  ) {
+  if (await notificationExists(key)) {
     return;
   }
 
   const message =
     `✅ 𝗡𝗲𝘄 𝗨𝘀𝗲𝗿 𝗔𝗱𝗱𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆\n\n` +
-    `👤 𝗡𝗮𝗺𝗲: ${
-      user.name || "Unknown"
-    }\n` +
-    `📱 𝗡𝘂𝗺𝗯𝗲𝗿: ${
-      user.phone || "Unknown"
-    }\n` +
-    `📅 𝗗𝗮𝘁𝗲: ${formatDate(
-      user.createdAt
-    )}\n` +
-    `⏰ 𝗧𝗶𝗺𝗲: ${formatTime(
-      user.createdAt
-    )}\n` +
-    `🟢 𝗦𝘁𝗮𝘁𝘂𝘀: Active` +
+    `*👤 Name :* ${user.name || "Unknown"}\n` +
+    `*📞 Number :* ${user.phone || "Unknown"}\n` +
+    `*📆 Date :* ${formatDate(user.createdAt)}\n` +
+    `*⏰ Time :* ${formatTime(user.createdAt)}\n` +
+    `*⚡ Status :* Active 🟢` +
     footer();
 
   const sent =
-    await sendChannelMessage(
-      message
-    );
+    await sendChannelMessage(message);
 
   if (sent) {
     await saveNotification(key);
   }
 }
 
-// ===============================
+// ========================================
 // EXPIRING / EXPIRED
-// ===============================
+// ========================================
 
 async function notifyStatus(user) {
   if (!user || !user.id) return;
 
-  const status =
-    getStatus(user);
+  const status = getStatus(user);
 
-  // ===============================
+  // ======================================
   // EXPIRING SOON
-  // ===============================
+  // ======================================
 
   if (status === "soon") {
     const key =
       `soon_${user.id}_${user.expiresAt}`;
 
-    if (
-      await notificationExists(key)
-    ) {
+    if (await notificationExists(key)) {
       return;
     }
 
     const message =
       `⏳ 𝗨𝘀𝗲𝗿 𝗘𝘅𝗽𝗶𝗿𝗶𝗻𝗴 𝗦𝗼𝗼𝗻\n\n` +
-      `👤 𝗡𝗮𝗺𝗲: ${
-        user.name || "Unknown"
-      }\n` +
-      `📱 𝗡𝘂𝗺𝗯𝗲𝗿: ${
-        user.phone || "Unknown"
-      }\n` +
-      `📅 𝗘𝘅𝗽𝗶𝗿𝗲𝘀: ${formatDate(
-        user.expiresAt
-      )}\n` +
-      `⏰ 𝗧𝗶𝗺𝗲: ${formatTime(
-        user.expiresAt
-      )}` +
+      `*👤 Name :* ${user.name || "Unknown"}\n` +
+      `*📞 Number :* ${user.phone || "Unknown"}\n` +
+      `*📆 Date :* ${formatDate(user.expiresAt)}\n` +
+      `*⏰ Time :* ${formatTime(user.expiresAt)}\n` +
+      `*⚡ Status :* Expiring Soon 🟡` +
       footer();
 
     const sent =
-      await sendChannelMessage(
-        message
-      );
+      await sendChannelMessage(message);
 
     if (sent) {
       await saveNotification(key);
     }
   }
 
-  // ===============================
+  // ======================================
   // EXPIRED
-  // ===============================
+  // ======================================
 
   if (status === "expired") {
     const key =
       `expired_${user.id}_${user.expiresAt}`;
 
-    if (
-      await notificationExists(key)
-    ) {
+    if (await notificationExists(key)) {
       return;
     }
 
     const message =
       `❌ 𝗨𝘀𝗲𝗿 𝗘𝘅𝗽𝗶𝗿𝗲𝗱\n\n` +
-      `👤 𝗡𝗮𝗺𝗲: ${
-        user.name || "Unknown"
-      }\n` +
-      `📱 𝗡𝘂𝗺𝗯𝗲𝗿: ${
-        user.phone || "Unknown"
-      }\n` +
-      `📅 𝗘𝘅𝗽𝗶𝗿𝗲𝗱: ${formatDate(
-        user.expiresAt
-      )}\n` +
-      `⏰ 𝗧𝗶𝗺𝗲: ${formatTime(
-        user.expiresAt
-      )}` +
+      `*👤 Name :* ${user.name || "Unknown"}\n` +
+      `*📞 Number :* ${user.phone || "Unknown"}\n` +
+      `*📆 Date :* ${formatDate(user.expiresAt)}\n` +
+      `*⏰ Time :* ${formatTime(user.expiresAt)}\n` +
+      `*⚡ Status :* Expired 🔴` +
       footer();
 
     const sent =
-      await sendChannelMessage(
-        message
-      );
+      await sendChannelMessage(message);
 
     if (sent) {
       await saveNotification(key);
@@ -539,36 +513,29 @@ async function notifyStatus(user) {
   }
 }
 
-// ===============================
+// ========================================
 // FIREBASE LISTENERS
-// ===============================
-
-let firebaseListenersStarted =
-  false;
+// ========================================
 
 function setupFirebaseListeners() {
-  if (
-    firebaseListenersStarted
-  ) {
+  if (firebaseListenersStarted) {
     return;
   }
 
-  firebaseListenersStarted =
-    true;
+  firebaseListenersStarted = true;
 
   console.log(
     "🔥 Firebase listeners starting..."
   );
 
-  // ===============================
+  // ======================================
   // NEW USERS
-  // ===============================
+  // ======================================
 
   onChildAdded(
     ref(db, "users"),
     async (snapshot) => {
-      const user =
-        snapshot.val();
+      const user = snapshot.val();
 
       if (!user) return;
 
@@ -578,30 +545,24 @@ function setupFirebaseListeners() {
         }`
       );
 
-      // Prevent old users from
-      // triggering notifications
-      // during initial Firebase load.
-      if (
-        !global.firebaseReady
-      ) {
+      // Don't notify existing users
+      // during first database load.
+      if (!global.firebaseReady) {
         return;
       }
 
-      await notifyNewUser(
-        user
-      );
+      await notifyNewUser(user);
     }
   );
 
-  // ===============================
-  // USER CHANGES / RENEWALS
-  // ===============================
+  // ======================================
+  // USER CHANGED / RENEWED
+  // ======================================
 
   onChildChanged(
     ref(db, "users"),
     async (snapshot) => {
-      const user =
-        snapshot.val();
+      const user = snapshot.val();
 
       if (!user) return;
 
@@ -611,19 +572,16 @@ function setupFirebaseListeners() {
         }`
       );
 
-      await notifyStatus(
-        user
-      );
+      await notifyStatus(user);
     }
   );
 
-  // ===============================
-  // INITIAL FIREBASE LOAD
-  // ===============================
+  // ======================================
+  // FIREBASE READY
+  // ======================================
 
   setTimeout(() => {
-    global.firebaseReady =
-      true;
+    global.firebaseReady = true;
 
     console.log(
       "🔥 Firebase initial load completed."
@@ -631,31 +589,25 @@ function setupFirebaseListeners() {
   }, 5000);
 }
 
-// ===============================
-// PERIODIC STATUS CHECK
-// ===============================
+// ========================================
+// PERIODIC EXPIRY CHECK
+// ========================================
 
 async function scanUsers() {
   try {
     const snapshot =
-      await get(
-        ref(db, "users")
-      );
+      await get(ref(db, "users"));
 
     if (!snapshot.exists()) {
       console.log(
         "👥 No users found."
       );
-
       return;
     }
 
-    const users =
-      snapshot.val();
+    const users = snapshot.val();
 
-    for (
-      const id of Object.keys(users)
-    ) {
+    for (const id of Object.keys(users)) {
       await notifyStatus({
         ...users[id],
         id,
@@ -675,35 +627,14 @@ async function scanUsers() {
   }
 }
 
-// ===============================
-// CHECK EVERY MINUTE
-// ===============================
-
+// Every minute
 setInterval(
   scanUsers,
   60 * 1000
 );
 
-// ===============================
-// START BOT
-// ===============================
-
-console.log("");
-console.log(
-  "========================================"
-);
-console.log(
-  "👻 SHADOW X BOT ACCESS SYSTEM"
-);
-console.log(
-  "========================================"
-);
-console.log(
-  "🚀 Starting bot..."
-);
-console.log(
-  "========================================"
-);
-console.log("");
+// ========================================
+// START
+// ========================================
 
 startBot();
