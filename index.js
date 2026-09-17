@@ -1,3 +1,5 @@
+console.log("🔥 SHADOW X INDEX.JS STARTED 🔥");
+
 const http = require("http");
 const pino = require("pino");
 
